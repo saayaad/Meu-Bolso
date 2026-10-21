@@ -7,6 +7,7 @@ import {
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
   onAuthStateChanged,
+  getAdditionalUserInfo,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
@@ -32,31 +33,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Sincroniza o perfil garantindo que o onboarding concluído nunca seja resetado
-  const syncUserProfile = async (user: User): Promise<UserProfile> => {
+  const withTimeout = <T,>(promise: Promise<T>, ms: number = 4000): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout de sincronização')), ms)
+      ),
+    ]);
+  };
+
+  const syncUserProfile = async (user: User, isBrandNewAccount: boolean = false): Promise<UserProfile> => {
     const userRef = doc(db, 'users', user.uid);
-    const snap = await getDoc(userRef);
-    const localDone = localStorage.getItem(`meu_bolso_onboarding_done_${user.uid}`) === 'true';
+    let snap;
+    try {
+      snap = await withTimeout(getDoc(userRef), 3500);
+    } catch (err) {
+      console.warn('Aviso ao consultar Firestore:', err);
+      snap = null;
+    }
 
-    if (snap.exists()) {
+    if (snap && snap.exists()) {
       const data = snap.data() as UserProfile;
-      const isDone = data.onboardingDone === true || localDone;
-
       const merged: UserProfile = {
         ...data,
-        onboardingDone: isDone,
+        onboardingDone: true,
       };
 
-      if (isDone) {
-        localStorage.setItem(`meu_bolso_onboarding_done_${user.uid}`, 'true');
+      localStorage.setItem('meu_bolso_onboarding_completed', 'true');
+      localStorage.setItem(`meu_bolso_onboarding_done_${user.uid}`, 'true');
+
+      if (!data.onboardingDone) {
+        setDoc(userRef, { onboardingDone: true }, { merge: true }).catch(() => {});
       }
 
       setUserProfile(merged);
       return merged;
     } else {
+      if (isBrandNewAccount) {
+        sessionStorage.setItem('meu_bolso_just_registered', 'true');
+      } else {
+        localStorage.setItem('meu_bolso_onboarding_completed', 'true');
+      }
+
       const initialWorkspaceId = `ws_${Math.random().toString(36).substring(2, 9)}`;
 
-      const newProfile: UserProfile = {
+      const fallbackProfile: UserProfile = {
         uid: user.uid,
         name: user.displayName || 'Usuário',
         email: user.email || '',
@@ -65,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         theme: 'dark',
         workspaceIds: [initialWorkspaceId],
         activeWorkspaceId: initialWorkspaceId,
-        onboardingDone: localDone,
+        onboardingDone: !isBrandNewAccount,
         consentAcceptedAt: new Date().toISOString(),
         notificationSettings: {
           daysBefore: 3,
@@ -79,114 +100,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
       };
 
-      // Cria workspace inicial
-      await setDoc(doc(db, 'workspaces', initialWorkspaceId), {
-        id: initialWorkspaceId,
-        name: 'Principal',
-        ownerId: user.uid,
-        createdAt: new Date().toISOString(),
-        budgetMode: 'categoria',
-      });
+      try {
+        await Promise.allSettled([
+          setDoc(doc(db, 'workspaces', initialWorkspaceId), {
+            id: initialWorkspaceId,
+            name: 'Principal',
+            ownerId: user.uid,
+            createdAt: new Date().toISOString(),
+            budgetMode: 'categoria',
+          }),
+          setDoc(doc(db, 'workspaces', initialWorkspaceId, 'members', user.uid), {
+            uid: user.uid,
+            role: 'owner',
+            name: user.displayName || 'Usuário',
+            email: user.email || '',
+            joinedAt: new Date().toISOString(),
+          }),
+          setDoc(userRef, fallbackProfile),
+        ]);
+      } catch (e) {
+        console.warn('Gravação do perfil em segundo plano:', e);
+      }
 
-      // Cria membro
-      await setDoc(doc(db, 'workspaces', initialWorkspaceId, 'members', user.uid), {
-        uid: user.uid,
-        role: 'owner',
-        name: user.displayName || 'Usuário',
-        email: user.email || '',
-        joinedAt: new Date().toISOString(),
-      });
-
-      await setDoc(userRef, newProfile);
-      setUserProfile(newProfile);
-      return newProfile;
+      setUserProfile(fallbackProfile);
+      return fallbackProfile;
     }
   };
 
   useEffect(() => {
+    const safetyTimer = setTimeout(() => setLoading(false), 5000);
+
     const unsubscribe = onAuthStateChanged(auth, async user => {
       setCurrentUser(user);
       if (user) {
         try {
-          await syncUserProfile(user);
+          await syncUserProfile(user, false);
         } catch (err) {
-          console.error('Erro ao sincronizar perfil:', err);
+          console.error('Erro na sincronização:', err);
         }
       } else {
         setUserProfile(null);
       }
       setLoading(false);
+      clearTimeout(safetyTimer);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(safetyTimer);
+    };
   }, []);
 
   const signInWithGoogle = async () => {
     const res = await signInWithPopup(auth, googleProvider);
     if (res.user) {
-      await syncUserProfile(res.user);
+      const isNew = getAdditionalUserInfo(res)?.isNewUser ?? false;
+      await syncUserProfile(res.user, isNew);
     }
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
     const res = await signInWithEmailAndPassword(auth, email, pass);
     if (res.user) {
-      await syncUserProfile(res.user);
+      await syncUserProfile(res.user, false);
     }
   };
 
   const signUpWithEmail = async (email: string, pass: string, name: string) => {
     const res = await createUserWithEmailAndPassword(auth, email, pass);
     if (res.user) {
-      const userRef = doc(db, 'users', res.user.uid);
-      const initialWorkspaceId = `ws_${Math.random().toString(36).substring(2, 9)}`;
-      const newProfile: UserProfile = {
-        uid: res.user.uid,
-        name: name.trim() || 'Usuário',
-        email: res.user.email || '',
-        photoURL: null,
-        currency: 'BRL',
-        theme: 'dark',
-        workspaceIds: [initialWorkspaceId],
-        activeWorkspaceId: initialWorkspaceId,
-        onboardingDone: false,
-        consentAcceptedAt: new Date().toISOString(),
-        notificationSettings: {
-          daysBefore: 3,
-          browserNotifications: true,
-          dailyReminder: false,
-          dailyReminderTime: '20:00',
-        },
-        security: {
-          pinEnabled: false,
-          autoLockMinutes: 5,
-        },
-      };
-
-      await setDoc(doc(db, 'workspaces', initialWorkspaceId), {
-        id: initialWorkspaceId,
-        name: 'Principal',
-        ownerId: res.user.uid,
-        createdAt: new Date().toISOString(),
-        budgetMode: 'categoria',
-      });
-
-      await setDoc(doc(db, 'workspaces', initialWorkspaceId, 'members', res.user.uid), {
-        uid: res.user.uid,
-        role: 'owner',
-        name: name.trim() || 'Usuário',
-        email: res.user.email || '',
-        joinedAt: new Date().toISOString(),
-      });
-
-      await setDoc(userRef, newProfile);
-      setUserProfile(newProfile);
+      await syncUserProfile(res.user, true);
     }
   };
 
   const signOut = async () => {
-    await firebaseSignOut(auth);
-    setUserProfile(null);
+    try {
+      await firebaseSignOut(auth);
+    } catch (err) {
+      console.warn('Erro ao desconectar do Firebase:', err);
+    } finally {
+      // Força a limpeza imediata do estado local
+      setCurrentUser(null);
+      setUserProfile(null);
+      sessionStorage.clear();
+    }
   };
 
   const resetPassword = async (email: string) => {
@@ -199,6 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await setDoc(userRef, data, { merge: true });
     setUserProfile(prev => (prev ? { ...prev, ...data } : null));
     if (data.onboardingDone) {
+      localStorage.setItem('meu_bolso_onboarding_completed', 'true');
       localStorage.setItem(`meu_bolso_onboarding_done_${currentUser.uid}`, 'true');
     }
   };
