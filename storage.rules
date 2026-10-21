@@ -1,0 +1,45 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isWorkspaceOwner(wid) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/workspaces/$(wid))
+        && firestore.get(/databases/(default)/documents/workspaces/$(wid)).data.ownerId == request.auth.uid;
+    }
+
+    function isMember(wid) {
+      return signedIn() && (
+        firestore.exists(/databases/(default)/documents/workspaces/$(wid)/members/$(request.auth.uid))
+        || isWorkspaceOwner(wid)
+      );
+    }
+
+    function canEdit(wid) {
+      return signedIn() && (
+        isWorkspaceOwner(wid) || (
+          firestore.exists(/databases/(default)/documents/workspaces/$(wid)/members/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/workspaces/$(wid)/members/$(request.auth.uid)).data.role in ['owner', 'editor']
+        )
+      );
+    }
+
+    match /users/{uid}/{allPaths=**} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /workspaces/{wid}/receipts/{allPaths=**} {
+      allow read: if isMember(wid);
+      allow delete: if canEdit(wid);
+      allow create, update: if canEdit(wid)
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+  }
+}

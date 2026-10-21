@@ -1,0 +1,277 @@
+# PROMPT: APLICATIVO WEB DE GESTÃO FINANCEIRA "MEU BOLSO"
+
+## 0. COMO VOCÊ DEVE TRABALHAR
+- Você é um engenheiro full-stack sênior. Construa um aplicativo web completo, funcional e pronto para produção, para vários usuários.
+- Escreva TODO o código completo. Nunca use "...", "restante do código aqui", "TODO" ou funções vazias. Todo botão, formulário, filtro e gráfico descrito abaixo deve funcionar de verdade.
+- Toda a interface, mensagens de erro, validações e textos devem estar em português do Brasil (pt-BR).
+- O projeto deve compilar sem erros (npm run build), sem imports não utilizados e sem variáveis indefinidas. Antes de finalizar, revise o código inteiro procurando erros de tipo, imports quebrados e referências inexistentes.
+- O nome do app fica em uma única constante (APP_NAME = "Meu Bolso"), para ser fácil de trocar.
+- Organize o código para que eu possa baixar o projeto e continuar o desenvolvimento depois: arquivos pequenos, nomes claros, comentários em português apenas onde a lógica for complexa.
+
+## 1. VISÃO GERAL
+Aplicativo de gestão financeira pessoal e familiar, multiusuário, responsivo (mobile-first) e instalável como PWA. Cada usuário tem seus dados isolados. O usuário registra Entradas e Saídas de dinheiro, controla contas a pagar e a receber, cartões de crédito, orçamentos e metas, e vê gráficos, resumos e insights.
+
+## 2. STACK E ESTRUTURA
+- React + TypeScript (strict, sem "any") + Vite + Tailwind CSS. Se o AI Studio impuser outra estrutura de projeto, mantenha React + TypeScript + Tailwind.
+- Firebase (SDK modular v10 ou superior): Authentication (e-mail/senha e Google), Firestore (com persistência offline multi-aba) e Storage (comprovantes e foto de perfil). Se o AI Studio oferecer integração nativa com o Firebase, use-a.
+- Bibliotecas: react-router-dom, recharts, date-fns (locale ptBR), react-hook-form + zod + @hookform/resolvers, lucide-react, sonner (toasts), jspdf + jspdf-autotable, xlsx, papaparse, vite-plugin-pwa, clsx.
+- Não coloque chaves secretas no código. Use variáveis de ambiente (VITE_FIREBASE_*) e crie o arquivo .env.example. Não use APIs pagas de IA: os insights são calculados por regras locais.
+- Estrutura sugerida: src/app (rotas, providers, layout), src/features/{auth, transactions, accounts, categories, budgets, goals, reports, importexport, sharing, settings, onboarding, notifications, security}, src/lib/{firebase, money, dates, ofx, csv, insights, forecast, balances}, src/hooks, src/types, src/components/ui.
+- Entregue também: README.md (passo a passo para configurar o Firebase e rodar), firestore.rules, storage.rules e .env.example.
+
+## 3. IDENTIDADE VISUAL (TEMA PRETO E LARANJA)
+- Tema escuro como padrão. Cores:
+  - Fundo: #0A0A0A
+  - Superfície (cards): #141414
+  - Superfície elevada (modais): #1C1C1C
+  - Borda: #2B2B2B
+  - Texto principal: #F5F5F5
+  - Texto secundário: #A3A3A3
+  - Laranja primário: #D97757 (hover #E58A6B, pressionado #C4623F), usado em botões principais, itens ativos, destaques e gráficos
+  - Entrada: verde #4ADE80
+  - Saída: vermelho #F87171
+  - Alerta: amarelo #FBBF24
+- Os gráficos usam o laranja como cor principal e uma paleta secundária harmoniosa (tons de laranja, âmbar, cinza e cores suaves) para diferenciar categorias. Cada categoria tem sua própria cor.
+- Fonte Inter (com fallback do sistema), números com fonte tabular. Cantos arredondados de 12 a 16px, sombras sutis, ícones lucide-react.
+- Navegação: barra inferior no celular (Início, Lançamentos, Contas a pagar, Relatórios, Mais) e menu lateral no desktop. Alvos de toque de pelo menos 44px.
+- Botões "Entrada" (verde) e "Saída" (vermelho) sempre acessíveis: lado a lado no topo do Início e como botão flutuante expansível no celular, que também oferece "Transferência".
+- Estados de carregamento com skeletons, estados vazios com ilustração simples e botão de ação, e mensagens de erro claras. Contraste e foco acessíveis (labels, aria-labels).
+
+## 4. AUTENTICAÇÃO E CONTA
+- Tela de login e cadastro com abas: e-mail/senha ou "Continuar com Google" (signInWithPopup).
+- Cadastro: nome, e-mail, senha (mínimo 8 caracteres, com indicador de força), confirmação de senha e checkbox obrigatório "Li e aceito os Termos de Uso e a Política de Privacidade". Salve a data e hora do aceite.
+- Envie e-mail de verificação após o cadastro, com aviso discreto enquanto não estiver verificado.
+- Recuperação de senha por e-mail (sendPasswordResetEmail).
+- Traduza todos os erros do Firebase Auth para português (email-already-in-use, invalid-credential, wrong-password, user-not-found, weak-password, too-many-requests, popup-closed-by-user, network-request-failed etc.).
+- Rotas protegidas: usuário não autenticado vai para /login. Usuário autenticado que acessa /login vai para o Início.
+- Perfil: nome, foto (upload com compressão no cliente para até 512px e 5 MB), moeda preferida (BRL padrão, opções USD e EUR, formatação via Intl.NumberFormat) e alteração de senha (com reautenticação).
+- "Sair": encerra a sessão neste dispositivo. Para "sair de todos os dispositivos", explique na tela que o Firebase invalida as sessões antigas quando a senha é alterada, e ofereça o botão "Alterar senha". Não invente revogação que o SDK cliente não permite.
+- Excluir conta: veja a seção 15.
+- Primeiro login (bootstrap, idempotente): crie o documento do usuário, crie um workspace pessoal (primeiro o documento do workspace, depois, em outra escrita, o documento de membro com role "owner"; não faça as duas no mesmo batch), crie as categorias padrão, crie a conta padrão "Carteira" e defina activeWorkspaceId.
+
+## 5. MODELO DE DADOS (FIRESTORE)
+Para suportar compartilhamento desde o início, todos os dados financeiros ficam dentro de um workspace:
+
+- users/{uid}: name, email, photoURL, currency, theme, workspaceIds[], activeWorkspaceId, onboardingDone, consentAcceptedAt, notificationSettings {daysBefore, browserNotifications, dailyReminder, dailyReminderTime}, security {pinEnabled, autoLockMinutes}.
+- workspaces/{wid}: name, ownerId, createdAt, budgetMode ("categoria" | "50-30-20" | "base-zero").
+- workspaces/{wid}/members/{uid}: role ("owner" | "editor" | "viewer"), name, email, joinedAt, inviteCode (apenas quando entrou por convite).
+- invites/{code}: workspaceId, workspaceName, role ("editor" | "viewer"), createdBy, expiresAt. O code é aleatório com pelo menos 20 caracteres.
+- Dentro de workspaces/{wid}:
+  - accounts/{id}: name, type ("carteira" | "corrente" | "poupanca" | "cartao_credito" | "investimento"), initialBalanceCents, color, icon, archived. Só para cartão: creditLimitCents, closingDay (1-31), dueDay (1-31).
+  - categories/{id}: name, type ("income" | "expense"), icon, color, parentId|null, isDefault, bucket ("necessidades" | "desejos" | "poupanca" | null) para a regra 50/30/20.
+  - transactions/{id}: type ("income" | "expense" | "transfer"), amountCents (inteiro maior que 0), description, categoryId|null, subcategoryId|null, accountId, toAccountId|null (só transferência), date ("YYYY-MM-DD", data da compra ou do recebimento), paymentMethod ("dinheiro" | "debito" | "credito" | "pix" | "transferencia" | "boleto" | "outro"), status ("paid" | "pending"), dueDate|null (obrigatória quando pending), paidDate|null, paidFromAccountId|null, recurrenceId|null, installment {groupId, number, total}|null, tags[], notes, attachments[{path, url, name, contentType}], createdBy, createdAt, updatedAt.
+  - recurrences/{id}: template (campos de um lançamento), frequency ("weekly" | "monthly" | "yearly"), startDate, endDate|null, dayOfMonth, lastGeneratedDate, active.
+  - budgets/{id}: categoryId, limitCents, alertPercent (padrão 80).
+  - goals/{id}: name, targetCents, savedCents, deadline, accountId|null, contributions[{id, date, amountCents, note}].
+
+REGRAS CRÍTICAS DE DADOS:
+- Dinheiro é SEMPRE guardado como inteiro em centavos (amountCents). Nunca use float para dinheiro. Crie lib/money com funções de conversão, formatação e máscara de input (o usuário digita os números e o campo preenche da direita para a esquerda).
+- Datas sem hora são strings "YYYY-MM-DD", interpretadas na data local do dispositivo. NUNCA use new Date("YYYY-MM-DD"), que interpreta como UTC e erra o dia. Crie funções utilitárias de parse e format. Use Timestamp apenas em createdAt e updatedAt.
+- "Vencida" não é guardada. É calculada: status "pending" e dueDate anterior a hoje.
+- Cálculo de saldo (funções puras em lib/balances):
+  - Só lançamentos com status "paid" afetam o saldo.
+  - A conta afetada é paidFromAccountId, ou accountId quando for nulo.
+  - saldo = initialBalanceCents + entradas pagas − saídas pagas + transferências recebidas − transferências enviadas.
+  - Transferências não entram nos totais de entradas e saídas.
+  - Lançamentos pendentes alimentam "a pagar", "a receber" e a previsão.
+- Carregue os lançamentos do workspace com onSnapshot (com cache offline) e calcule resumos, gráficos e saldos no cliente com funções puras. Isole o acesso a dados em hooks, para que seja fácil trocar por consultas por período no futuro. Evite consultas que exijam índice composto. Se precisar, gere firestore.indexes.json.
+- Listas grandes: paginação ou rolagem infinita no cliente (50 itens por vez).
+
+## 6. LANÇAMENTOS (ENTRADAS E SAÍDAS)
+Formulário rápido em modal (celular: bottom sheet) aberto pelos botões Entrada, Saída e Transferência. Use react-hook-form + zod, com mensagens de erro em português.
+
+Campos:
+- Valor (máscara de moeda, obrigatório, maior que zero).
+- Descrição (obrigatória, até 120 caracteres).
+- Categoria (obrigatória, filtrada pelo tipo) e subcategoria (opcional).
+- Data (padrão hoje).
+- Conta ou carteira (padrão a última usada).
+- Forma de pagamento.
+- Situação:
+  - Entrada: "Recebido agora" ou "A receber", com a data prevista.
+  - Saída: "Pago na hora" ou "Pagar depois", com a data de vencimento obrigatória.
+- Recorrente: alternância com frequência (semanal, mensal, anual) e data final opcional.
+- Parcelado (só em saída): número de parcelas de 2 a 48. Mostre o valor de cada parcela.
+- Tags (chips livres) e observações.
+- Anexo: foto ou PDF do comprovante ou nota fiscal (até 5 MB). Imagens são comprimidas no cliente (largura máxima 1600px). Mostre miniatura e permita remover ou abrir.
+
+Comportamentos:
+- Salvar, "Salvar e adicionar outro", editar, excluir (com confirmação) e duplicar (abre o formulário preenchido com a data de hoje).
+- Se a forma de pagamento for "crédito" e a conta for um cartão, o lançamento nasce "pending" e o dueDate é calculado automaticamente pela fatura (dia de fechamento e dia de vencimento do cartão), podendo ser editado.
+- Parcelamento: crie N lançamentos com IDs determinísticos (inst_{groupId}_{n}), um por mês (se o dia não existir no mês, use o último dia). O valor é dividido em centavos e o resto vai para a primeira parcela. A descrição recebe o sufixo "(1/N)". Ao editar ou excluir uma parcela, pergunte: "somente esta", "esta e as próximas" ou "todas".
+- Recorrência: ao abrir o app, para cada recorrência ativa, gere os lançamentos "pending" dos próximos 3 meses, com ID determinístico (rec_{recurrenceId}_{YYYY-MM-DD}). Antes de criar, verifique se o ID já existe no cache local, para não duplicar nem sobrescrever edições. Ao editar ou excluir, pergunte: "somente este", "este e os próximos" ou "todos".
+- Marcar como pago com um clique: define paidDate (hoje, editável) e a conta de pagamento.
+- Tela "Lançamentos": lista agrupada por dia, com busca por descrição ou valor e filtros combináveis por período (este mês, mês passado, 7, 30, 90 dias, ano, personalizado), tipo, categoria, conta, forma de pagamento, situação (pago, pendente, vencido), tags e faixa de valor. Mostre o total do filtro atual. Cada item mostra ícone e cor da categoria, descrição, conta, situação (selo "Vencida" em vermelho) e valor.
+
+## 7. CONTAS, CARTEIRAS E CARTÕES
+- CRUD de contas: carteira, conta corrente, poupança, cartão de crédito e investimentos, cada uma com cor e ícone. Permita arquivar a conta, mas não excluir se tiver lançamentos.
+- Tela com o saldo de cada conta e o saldo total (sem contar cartões).
+- Transferência entre contas: cria um lançamento do tipo "transfer" (accountId para toAccountId) com status "paid", sem categoria.
+- Cartão de crédito (sem saldo, com limite):
+  - Limite usado = soma das despesas do cartão com status "pending". Limite disponível = limite − usado.
+  - Barra de uso do limite.
+  - Visualização por fatura: navegação mês a mês, agrupando as despesas pelo ciclo (dia de fechamento) e mostrando total, vencimento e situação.
+  - Botão "Pagar fatura": o usuário escolhe a conta que vai pagar e a data. Todos os lançamentos da fatura passam a "paid", com paidDate e paidFromAccountId.
+  - Parcelas futuras aparecem nas faturas dos meses seguintes.
+
+## 8. CONTAS A PAGAR E A RECEBER, CALENDÁRIO E ALERTAS
+- Tela com abas "A pagar" e "A receber". Seções: Vencidas (vermelho), Vencem hoje, Próximos 7 dias, Este mês e Depois. Cada item tem o botão "Marcar como pago/recebido". Totais por seção.
+- Calendário mensal (componente próprio com date-fns): pontos vermelhos nos dias com contas a pagar e verdes nos dias com a receber. Ao tocar em um dia, mostre a lista do dia, com opção de pagar.
+- Central de notificações no app (ícone de sino com contador): contas vencidas, que vencem hoje e que vencem em X dias (configurável: 1, 3 ou 7 dias), orçamentos próximos do limite e metas.
+- Notificações do navegador via Notification API (com pedido de permissão), disparadas ao abrir o app ou enquanto ele estiver aberto. Lembrete diário configurável ("Já registrou seus gastos de hoje?"), com o mesmo comportamento. Explique no README que notificações com o app fechado exigiriam Firebase Cloud Messaging com Cloud Functions (fora do escopo).
+
+## 9. CATEGORIAS
+- Categorias padrão com ícone, cor e bucket 50/30/20, criadas no primeiro acesso.
+  - Despesas:
+    - Moradia (Aluguel, Condomínio, Manutenção)
+    - Contas e serviços (Luz, Água, Internet, Celular, Gás)
+    - Alimentação (Mercado, Restaurantes, Delivery)
+    - Transporte (Combustível, App/Táxi, Transporte público, Manutenção)
+    - Saúde (Farmácia, Consultas, Plano de saúde)
+    - Educação
+    - Lazer (Streaming, Viagens, Passeios)
+    - Compras (Roupas, Eletrônicos)
+    - Assinaturas
+    - Cuidados pessoais
+    - Pets
+    - Presentes e doações
+    - Impostos e taxas
+    - Dívidas e empréstimos
+    - Investimentos e poupança
+    - Outros
+  - Receitas: Salário, Freelance, Rendimentos, Vendas, Reembolso, Presente, Outros.
+- Telas para criar, editar e excluir categorias e subcategorias próprias, com escolha de ícone e cor. Ao excluir uma categoria com lançamentos, peça para escolher outra categoria para reatribuí-los.
+
+## 10. ORÇAMENTO E METAS
+- Modo "Por categoria": limite mensal por categoria, com barra de progresso (verde, amarelo a partir do alertPercent, vermelho acima de 100%), valor gasto, restante e aviso na central de notificações.
+- Modo "50/30/20": compara os gastos reais por bucket (necessidades, desejos, poupança) com 50%, 30% e 20% das entradas do mês, com barras e explicação.
+- Modo "Base zero": o usuário distribui toda a renda do mês entre categorias, e o app mostra "não alocado" até chegar a R$ 0,00.
+- O usuário escolhe o modo nas configurações do orçamento.
+- Metas de economia: nome, valor alvo, prazo e conta opcional. Botão "Adicionar valor" (aporte com data e nota), progresso em % e quanto precisa guardar por mês para atingir o prazo. Marque como "Concluída" ao atingir o alvo.
+
+## 11. DASHBOARD, GRÁFICOS E RELATÓRIOS
+Tela Início com seletor de mês (anterior e próximo), botões Entrada e Saída, e:
+
+1. Resumo geral (cards): saldo atual das contas, total de entradas, TOTAL GASTO (com divisão entre pago e a pagar), saldo do mês, a pagar, a receber, maior gasto (descrição e valor), média diária de gastos, previsão do saldo no fim do mês, percentual economizado e quantidade de lançamentos.
+2. GRÁFICO GERAL DE GASTOS (principal): mostra o TOTAL GASTO em destaque e um gráfico de barras horizontais em que cada barra é uma despesa. A legenda é a descrição, e a barra é colorida pela categoria. O tooltip (hover ou toque) mostra descrição, categoria, data, forma de pagamento, situação e valor. Mostre as 30 maiores, com opção "Ver todas" e rolagem. Alternância de visão: "Por lançamento", "Por categoria" (rosca) e "Por dia".
+3. Gráfico de pizza ou rosca por categoria, com percentuais e lista ao lado.
+4. Gráfico de linha da evolução do saldo ao longo dos meses (últimos 6 ou 12).
+5. Comparativo mês a mês (barras de entradas vs saídas) e ano a ano (totais anuais e mesmo mês em anos diferentes).
+6. Próximos vencimentos (5 itens), progresso dos orçamentos, metas e os últimos lançamentos.
+
+Tela Relatórios: os mesmos blocos com filtros completos (período personalizado, categoria, conta, tipo, situação) e botões de exportação (seção 13). Todos os gráficos com tooltips, responsivos, com estado vazio e acessíveis.
+
+## 12. INSIGHTS E PREVISÃO (REGRAS LOCAIS, SEM IA PAGA)
+- Previsão de saldo no fim do mês = saldo atual + a receber pendente − a pagar pendente até o último dia do mês (incluindo recorrentes já gerados). Alerte se ficar negativo.
+- Insights automáticos em cartões, por exemplo:
+  - "Você gastou X% mais/menos com [categoria] que no mês passado" (quando a variação for maior que 20% e o valor relevante).
+  - Categoria que mais pesa no mês.
+  - Orçamento perto de estourar ou estourado.
+  - Contas vencidas.
+  - Taxa de economia do mês.
+  - Assinaturas e recorrências detectadas e o custo mensal total.
+  - Gasto médio diário versus o ritmo necessário para fechar o mês no azul.
+- Sugestões para reduzir gastos: para as 3 categorias com maior gasto variável, mostre quanto se economizaria com uma redução de 10% e 20%.
+
+## 13. IMPORTAÇÃO E EXPORTAÇÃO
+- Importar extrato em CSV: leitura com papaparse, tela de mapeamento de colunas (data, descrição, valor, tipo), detecção de separador, formatos de data (dd/mm/aaaa) e número brasileiro (1.234,56).
+- Importar OFX: escreva um parser próprio (OFX 1.x em SGML sem tags de fechamento e OFX 2.x em XML), lendo STMTTRN (DTPOSTED, TRNAMT, NAME/MEMO, FITID). TRNAMT negativo é saída e positivo é entrada.
+- Pré-visualização editável antes de confirmar: sugestão automática de categoria por palavras-chave, escolha de conta, detecção de duplicados (mesma data + valor + descrição, ou mesmo FITID) com opção de ignorá-los.
+- Exportar relatórios do período filtrado em PDF (jspdf + autotable, com resumo, totais por categoria e lista), Excel (.xlsx) e CSV (separador ponto e vírgula, UTF-8 com BOM, abre corretamente no Excel brasileiro).
+- Backup completo em JSON (exportar e restaurar, com validação do formato).
+
+## 14. COMPARTILHAMENTO (CASAL OU FAMÍLIA)
+- O dono do workspace gera um link/código de convite com permissão "Editor" (cria e edita) ou "Visualizador" (somente leitura) e prazo de validade.
+- Quem recebe o convite entra pelo código (documento invites/{code}) criando o próprio documento de membro, e adiciona o workspace aos seus workspaceIds.
+- Tela de gerenciamento: lista de membros, alterar permissão, remover membro (somente o dono) e sair do workspace (membros).
+- Seletor de workspace no topo, para alternar entre o pessoal e os compartilhados. Visualizadores não veem botões de criar, editar ou excluir.
+- Mostre em cada lançamento quem o criou, quando o workspace tiver mais de um membro.
+
+## 15. SEGURANÇA, PRIVACIDADE E LGPD
+- Isolamento total dos dados por regras de segurança do Firestore e do Storage (seção 17).
+- Bloqueio do app por PIN de 4 a 6 dígitos:
+  - O PIN é guardado apenas como hash com salt (PBKDF2 via Web Crypto) no armazenamento local do dispositivo. Nunca guarde o PIN em texto puro.
+  - Bloqueia ao abrir o app, após inatividade (1, 5 ou 15 min, configurável) e ao voltar do segundo plano.
+  - Após 5 tentativas erradas, exija novo login.
+  - Biometria via WebAuthn apenas se o navegador suportar, e esconda a opção caso contrário.
+- Páginas /termos e /privacidade com texto-base em português, descrevendo quais dados são coletados, finalidade, armazenamento, direitos do titular (LGPD) e contato. Inclua um aviso no rodapé: "Texto-base, revisar com um profissional jurídico antes da publicação".
+- Em Configurações > Dados e privacidade:
+  - "Exportar meus dados" (JSON e CSV).
+  - "Excluir minha conta e meus dados", com reautenticação e digitação de "EXCLUIR". Apaga os dados do usuário, os workspaces dos quais ele é o único membro, os arquivos do Storage e, por fim, o usuário no Auth. Se for dono de um workspace com outros membros, peça para transferir a propriedade ou remover os membros antes.
+- Sanitize e valide todas as entradas, e não use innerHTML com conteúdo do usuário. Não use analytics nem rastreadores de terceiros.
+
+## 16. PWA E EXPERIÊNCIA
+- PWA com manifest (nome, short_name, theme_color #0A0A0A, background_color #0A0A0A, display standalone, ícones 192 e 512 e maskable em laranja sobre preto), service worker (vite-plugin-pwa) com cache do shell do app e funcionamento offline básico, e botão "Instalar app" quando disponível.
+- Persistência offline do Firestore com sincronização automática entre dispositivos e abas.
+- Tutorial no primeiro acesso: 5 passos (boas-vindas, adicionar uma Entrada/Saída, contas a pagar, orçamentos e metas, relatórios), com botão "Pular". Pode ser revisto em Configurações > Sobre.
+- Página de Configurações com seções: Perfil, Preferências (moeda, tema), Notificações, Segurança (PIN, senha, sair), Workspace e compartilhamento, Dados e privacidade e Sobre.
+- Tema claro opcional, desde que o escuro seja o padrão e esteja perfeito.
+
+## 17. REGRAS DE SEGURANÇA (REFERÊNCIA PARA OS ARQUIVOS)
+Gere firestore.rules com base na estrutura abaixo, validando a sintaxe. Em todas as escritas, valide também os tipos dos campos principais (amountCents inteiro e maior que 0, type e status dentro dos valores permitidos).
+
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        function signedIn() { return request.auth != null; }
+        function memberPath(wid) { return /databases/$(database)/documents/workspaces/$(wid)/members/$(request.auth.uid); }
+        function isMember(wid) { return signedIn() && exists(memberPath(wid)); }
+        function role(wid) { return get(memberPath(wid)).data.role; }
+        function canEdit(wid) { return isMember(wid) && role(wid) in ['owner', 'editor']; }
+        function isOwner(wid) { return isMember(wid) && role(wid) == 'owner'; }
+
+        match /users/{uid}/{document=**} {
+          allow read, write: if signedIn() && request.auth.uid == uid;
+        }
+
+        match /workspaces/{wid} {
+          allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+          allow read: if isMember(wid);
+          allow update, delete: if isOwner(wid);
+
+          match /members/{uid} {
+            allow read: if isMember(wid);
+            allow create: if signedIn() && uid == request.auth.uid && (
+              (request.resource.data.role == 'owner' &&
+                get(/databases/$(database)/documents/workspaces/$(wid)).data.ownerId == request.auth.uid) ||
+              (exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)) &&
+                get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.workspaceId == wid &&
+                get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role)
+            );
+            allow update: if isOwner(wid);
+            allow delete: if isOwner(wid) || (signedIn() && uid == request.auth.uid);
+          }
+
+          match /{coll}/{docId} {
+            allow read: if isMember(wid);
+            allow write: if coll != 'members' && canEdit(wid);
+          }
+        }
+
+        match /invites/{code} {
+          allow get: if signedIn();
+          allow list: if false;
+          allow create: if signedIn() && isOwner(request.resource.data.workspaceId)
+                        && request.resource.data.role in ['editor', 'viewer'];
+          allow delete: if signedIn() && isOwner(resource.data.workspaceId);
+        }
+      }
+    }
+
+Storage (storage.rules):
+- users/{uid}/...: leitura e escrita apenas pelo próprio uid; limite de 5 MB; somente imagens.
+- workspaces/{wid}/receipts/...: leitura para membros do workspace e escrita para owner ou editor (consulta ao Firestore pelas funções firestore.exists e firestore.get); limite de 5 MB; somente imagens ou PDF.
+
+## 18. QUALIDADE E CRITÉRIOS DE ACEITE
+O trabalho só está concluído quando:
+1. Cadastro, login por e-mail, login com Google, recuperação de senha e logout funcionam, e o primeiro login cria tudo que é necessário.
+2. Dá para criar Entrada, Saída e Transferência com todos os campos descritos, incluindo pago na hora vs pagar depois com vencimento, recorrência, parcelamento e anexo, e editar, duplicar e excluir.
+3. O Início mostra o resumo geral, o TOTAL GASTO e o gráfico geral de gastos com a descrição de cada despesa no tooltip, além dos demais gráficos, e tudo reage ao mês selecionado.
+4. Contas a pagar e a receber, calendário, central de notificações, cartões com faturas e metas funcionam.
+5. Orçamento nos três modos, insights, previsão, importação (CSV e OFX), exportação (PDF, Excel, CSV e JSON), compartilhamento, PIN, exclusão de conta e exportação de dados funcionam.
+6. Os cálculos de dinheiro e datas não têm erro de arredondamento nem de fuso horário. Escreva testes simples (Vitest) para lib/money, lib/dates, lib/balances, o parcelamento e o parser OFX.
+7. O layout funciona de 360px até desktop, no tema preto e laranja, sem rolagem horizontal indesejada e sem erros no console.
+8. Nenhum texto fica em inglês na interface e nenhuma chave secreta está no código.
+
+## 19. ENTREGÁVEIS
+Todo o código-fonte, firestore.rules, storage.rules, .env.example e um README.md em português com: como criar o projeto no Firebase, ativar Authentication (e-mail/senha e Google), Firestore e Storage, adicionar o domínio autorizado para o login com Google, publicar as regras, preencher o .env e rodar e publicar o app. Liste ao final o que foi implementado e qualquer limitação conhecida (por exemplo, notificações com o app fechado).

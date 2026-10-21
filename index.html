@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR" class="dark" style="background-color: #0A0A0A; color: #F5F5F5;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Meu Bolso - Gestão Financeira Pessoal e Familiar</title>
+    <meta name="description" content="Aplicativo web de gestão financeira pessoal e familiar, multiusuário, responsivo e instalável como PWA." />
+    <meta property="og:title" content="Meu Bolso - Gestão Financeira Pessoal e Familiar" />
+    <meta property="og:description" content="Aplicativo web de gestão financeira pessoal e familiar, multiusuário, responsivo e instalável como PWA." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0A0A0A" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/index.css" />
+    <script>
+      if (
+        'serviceWorker' in navigator &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        });
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            for (var j = 0; j < keys.length; j++) {
+              if (keys[j].indexOf('workbox') !== -1 || keys[j].indexOf('precache') !== -1) {
+                caches.delete(keys[j]);
+              }
+            }
+          });
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-[#0A0A0A] text-[#F5F5F5] antialiased selection:bg-[#D97757]/30 selection:text-[#F5F5F5]" style="background-color: #0A0A0A; color: #F5F5F5; margin: 0;">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

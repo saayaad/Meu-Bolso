@@ -1,0 +1,204 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile, preferences, and linked workspaces",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "photoURL": { "type": "string", "maxLength": 1000 },
+        "currency": { "type": "string", "enum": ["BRL", "USD", "EUR"] },
+        "theme": { "type": "string", "enum": ["dark", "light"] },
+        "workspaceIds": { "type": "array" },
+        "activeWorkspaceId": { "type": "string", "maxLength": 128 },
+        "onboardingDone": { "type": "boolean" },
+        "consentAcceptedAt": { "type": "string", "maxLength": 50 },
+        "notificationSettings": { "type": "object" },
+        "security": { "type": "object" }
+      },
+      "required": ["email", "name"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Financial workspace (personal or shared)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "budgetMode": { "type": "string", "enum": ["categoria", "50-30-20", "base-zero"] }
+      },
+      "required": ["name", "ownerId"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Workspace member and permissions",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["owner", "editor", "viewer"] },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "joinedAt": { "type": "string", "maxLength": 50 },
+        "inviteCode": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["role", "name", "email"]
+    },
+    "Invite": {
+      "title": "Invite",
+      "description": "Workspace invite code for sharing with family or partner",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "workspaceName": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["editor", "viewer"] },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "expiresAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["workspaceId", "role", "createdBy", "expiresAt"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "Financial account, wallet, or credit card",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 80 },
+        "type": { "type": "string", "enum": ["carteira", "corrente", "poupanca", "cartao_credito", "investimento"] },
+        "initialBalanceCents": { "type": "integer" },
+        "color": { "type": "string", "maxLength": 30 },
+        "icon": { "type": "string", "maxLength": 50 },
+        "archived": { "type": "boolean" },
+        "creditLimitCents": { "type": "integer" },
+        "closingDay": { "type": "integer" },
+        "dueDay": { "type": "integer" }
+      },
+      "required": ["name", "type"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Expense or income category and subcategories",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 60 },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "icon": { "type": "string", "maxLength": 50 },
+        "color": { "type": "string", "maxLength": 30 },
+        "parentId": { "type": "string" },
+        "isDefault": { "type": "boolean" },
+        "bucket": { "type": "string", "enum": ["necessidades", "desejos", "poupanca"] }
+      },
+      "required": ["name", "type"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Income, expense, or transfer financial entry",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense", "transfer"] },
+        "amountCents": { "type": "integer" },
+        "description": { "type": "string", "maxLength": 120 },
+        "categoryId": { "type": "string" },
+        "subcategoryId": { "type": "string" },
+        "accountId": { "type": "string", "maxLength": 128 },
+        "toAccountId": { "type": "string" },
+        "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "paymentMethod": { "type": "string", "enum": ["dinheiro", "debito", "credito", "pix", "transferencia", "boleto", "outro"] },
+        "status": { "type": "string", "enum": ["paid", "pending"] },
+        "dueDate": { "type": "string" },
+        "paidDate": { "type": "string" },
+        "paidFromAccountId": { "type": "string" },
+        "recurrenceId": { "type": "string" },
+        "installment": { "type": "object" },
+        "tags": { "type": "array" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "attachments": { "type": "array" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["type", "amountCents", "description", "accountId", "date", "paymentMethod", "status"]
+    },
+    "Recurrence": {
+      "title": "Recurrence",
+      "description": "Recurring transaction generator template",
+      "type": "object",
+      "properties": {
+        "template": { "type": "object" },
+        "frequency": { "type": "string", "enum": ["weekly", "monthly", "yearly"] },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "dayOfMonth": { "type": "integer" },
+        "lastGeneratedDate": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["frequency", "startDate", "active"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "Budget limit for a category",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "limitCents": { "type": "integer" },
+        "alertPercent": { "type": "integer" }
+      },
+      "required": ["categoryId", "limitCents"]
+    },
+    "Goal": {
+      "title": "Goal",
+      "description": "Savings target and progress tracking",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "targetCents": { "type": "integer" },
+        "savedCents": { "type": "integer" },
+        "deadline": { "type": "string" },
+        "accountId": { "type": "string" },
+        "contributions": { "type": "array" }
+      },
+      "required": ["name", "targetCents", "savedCents", "deadline"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User account document"
+    },
+    "/workspaces/{wid}": {
+      "schema": "Workspace",
+      "description": "Workspace root document"
+    },
+    "/workspaces/{wid}/members/{uid}": {
+      "schema": "Member",
+      "description": "Members of a workspace"
+    },
+    "/workspaces/{wid}/accounts/{id}": {
+      "schema": "Account",
+      "description": "Financial accounts within workspace"
+    },
+    "/workspaces/{wid}/categories/{id}": {
+      "schema": "Category",
+      "description": "Income/expense categories within workspace"
+    },
+    "/workspaces/{wid}/transactions/{id}": {
+      "schema": "Transaction",
+      "description": "Financial transactions within workspace"
+    },
+    "/workspaces/{wid}/recurrences/{id}": {
+      "schema": "Recurrence",
+      "description": "Scheduled recurrences within workspace"
+    },
+    "/workspaces/{wid}/budgets/{id}": {
+      "schema": "Budget",
+      "description": "Category budgets within workspace"
+    },
+    "/workspaces/{wid}/goals/{id}": {
+      "schema": "Goal",
+      "description": "Savings goals within workspace"
+    },
+    "/invites/{code}": {
+      "schema": "Invite",
+      "description": "Public invite codes for workspace collaboration"
+    }
+  }
+}

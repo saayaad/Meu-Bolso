@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function workspaceDoc(wid) {
+      return /databases/$(database)/documents/workspaces/$(wid);
+    }
+    function memberPath(wid) {
+      return /databases/$(database)/documents/workspaces/$(wid)/members/$(request.auth.uid);
+    }
+    function isWorkspaceOwner(wid) {
+      return signedIn() && exists(workspaceDoc(wid)) && get(workspaceDoc(wid)).data.ownerId == request.auth.uid;
+    }
+    function isMember(wid) {
+      return signedIn() && (exists(memberPath(wid)) || isWorkspaceOwner(wid));
+    }
+    function role(wid) {
+      return exists(memberPath(wid)) ? get(memberPath(wid)).data.role : (isWorkspaceOwner(wid) ? 'owner' : 'viewer');
+    }
+    function canEdit(wid) {
+      return isMember(wid) && (role(wid) == 'owner' || role(wid) == 'editor');
+    }
+    function isOwner(wid) {
+      return isMember(wid) && role(wid) == 'owner';
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /workspaces/{wid} {
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow read: if isMember(wid) || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow update: if canEdit(wid) || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow delete: if isOwner(wid) || (signedIn() && resource.data.ownerId == request.auth.uid);
+
+      match /members/{uid} {
+        allow read: if isMember(wid) || (signedIn() && request.auth.uid == uid);
+        allow create: if signedIn() && (request.auth.uid == uid || isOwner(wid));
+        allow update: if isOwner(wid) || (signedIn() && request.auth.uid == uid);
+        allow delete: if isOwner(wid) || (signedIn() && request.auth.uid == uid);
+      }
+
+      match /accounts/{id} {
+        allow read: if isMember(wid);
+        allow write: if canEdit(wid);
+      }
+
+      match /categories/{id} {
+        allow read: if isMember(wid);
+        allow write: if canEdit(wid);
+      }
+
+      match /transactions/{txId} {
+        allow read: if isMember(wid);
+        allow write: if canEdit(wid);
+      }
+
+      match /recurrences/{id} {
+        allow read: if isMember(wid);
+        allow write: if canEdit(wid);
+      }
+
+      match /budgets/{id} {
+        allow read: if isMember(wid);
+        allow write: if canEdit(wid);
+      }
+
+      match /goals/{id} {
+        allow read: if isMember(wid);
+        allow write: if canEdit(wid);
+      }
+    }
+
+    match /invites/{code} {
+      allow get, list: if signedIn();
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+    }
+  }
+}

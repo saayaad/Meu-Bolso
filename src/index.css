@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #0A0A0A;
+    --bg-card: #141414;
+    --bg-elevated: #1C1C1C;
+    --border-color: #2B2B2B;
+    --text-primary: #F5F5F5;
+    --text-secondary: #A3A3A3;
+    --orange-primary: #D97757;
+    --orange-hover: #E58A6B;
+    --orange-active: #C4623F;
+  }
+
+  body.light, html[data-theme="light"] {
+    --bg-main: #F1F5F9;
+    --bg-card: #FFFFFF;
+    --bg-elevated: #E2E8F0;
+    --border-color: #CBD5E1;
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
+    --orange-primary: #D97757;
+    --orange-hover: #C4623F;
+    --orange-active: #B55432;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+
+  /* Estilização Global de Checkboxes */
+  input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    background-color: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+    transition: all 0.2s ease-in-out;
+    margin: 0;
+  }
+
+  input[type="checkbox"]::before {
+    content: "";
+    width: 0.75rem;
+    height: 0.75rem;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    transform: scale(0);
+    transform-origin: center;
+    transition: 120ms transform ease-in-out;
+    background-color: var(--text-primary);
+  }
+
+  input[type="checkbox"]:checked {
+    background-color: var(--orange-primary);
+    border-color: var(--orange-primary);
+  }
+
+  input[type="checkbox"]:checked::before {
+    transform: scale(1);
+    background-color: #FFFFFF;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
