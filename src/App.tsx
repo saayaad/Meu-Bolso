@@ -59,27 +59,40 @@ function MainApp() {
     }
   }, [userProfile?.theme]);
 
-  // Exibe o tutorial ESTRITAMENTE na primeira vez em que a conta for cadastrada
+  // Exibe o tutorial APENAS se o onboarding nunca foi concluído por este usuário
   useEffect(() => {
-    if (!currentUser || loading) return;
-
-    // Se já foi marcado como concluído no navegador, nunca abre
-    if (localStorage.getItem('meu_bolso_onboarding_completed') === 'true') {
+    // 1. Trava global: se já foi visto neste navegador, nunca abre no login
+    if (typeof window !== 'undefined' && localStorage.getItem('meu_bolso_tutorial_visto') === 'true') {
       setShowTutorial(false);
       return;
     }
 
-    // Só abre se a sessão foi disparada como novo cadastro
-    const justRegistered = sessionStorage.getItem('meu_bolso_just_registered') === 'true';
-    if (justRegistered) {
-      setShowTutorial(true);
-      sessionStorage.removeItem('meu_bolso_just_registered');
-    } else {
-      // Login em conta já existente: bloqueia definitivamente
-      localStorage.setItem('meu_bolso_onboarding_completed', 'true');
+    if (!currentUser || loading || !userProfile) return;
+
+    const userKey = `meu_bolso_onboarding_done_${currentUser.uid}`;
+    const alreadyDoneLocally = localStorage.getItem(userKey) === 'true';
+
+    // 2. Se já estiver marcado como feito no Firestore ou no localStorage do usuário, silencia
+    if (alreadyDoneLocally || userProfile.onboardingDone === true) {
+      localStorage.setItem('meu_bolso_tutorial_visto', 'true');
+      localStorage.setItem(userKey, 'true');
       setShowTutorial(false);
+      return;
     }
-  }, [currentUser, loading]);
+
+    // 3. Se for uma conta já existente (com workspace configurado), marca como concluído e não abre
+    if (userProfile.workspaceIds && userProfile.workspaceIds.length > 0 && userProfile.onboardingDone !== false) {
+      localStorage.setItem('meu_bolso_tutorial_visto', 'true');
+      localStorage.setItem(userKey, 'true');
+      setShowTutorial(false);
+      return;
+    }
+
+    // 4. Exibe apenas se for expressamente o primeiro acesso de cadastro
+    if (userProfile.onboardingDone === false && !alreadyDoneLocally) {
+      setShowTutorial(true);
+    }
+  }, [currentUser, userProfile, loading]);
 
   // Handle inactivity timeout and background app lock
   useEffect(() => {
@@ -152,7 +165,7 @@ function MainApp() {
 
   const handleCloseTutorial = async () => {
     setShowTutorial(false);
-    localStorage.setItem('meu_bolso_onboarding_completed', 'true');
+    localStorage.setItem('meu_bolso_tutorial_visto', 'true');
     if (currentUser) {
       localStorage.setItem(`meu_bolso_onboarding_done_${currentUser.uid}`, 'true');
     }
@@ -160,8 +173,8 @@ function MainApp() {
       if (userProfile && userProfile.onboardingDone !== true) {
         await updateUserProfileData({ onboardingDone: true });
       }
-    } catch {
-      // Ignora erro eventual de rede; a trava local já impede a exibição
+    } catch (err) {
+      console.warn('Persistência salva localmente:', err);
     }
   };
 
@@ -176,6 +189,7 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)] flex flex-col lg:flex-row antialiased transition-colors duration-200">
+      {/* Desktop Sidebar */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={tab => {
@@ -185,14 +199,18 @@ function MainApp() {
         onLockApp={handleLockApp}
       />
 
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-8 bg-[var(--bg-main)]">
+        {/* Offline Indicator Banner */}
         <OfflineIndicator />
 
+        {/* Top Header */}
         <Header
           onOpenTransactionModal={handleOpenTransactionModal}
           onNavigateTab={setActiveTab}
         />
 
+        {/* Tab Routing */}
         <main className="flex-1 bg-[var(--bg-main)]">
           {activeTab === 'dashboard' && (
             <DashboardPage
@@ -226,8 +244,10 @@ function MainApp() {
           {activeTab === 'legal' && <LegalPage onBack={() => setActiveTab('settings')} />}
         </main>
 
+        {/* Mobile Floating Action Button */}
         <MobileFAB onOpenTransactionModal={handleOpenTransactionModal} />
 
+        {/* Mobile Bottom Navigation */}
         <MobileNav
           activeTab={activeTab}
           onSelectTab={tab => {
@@ -237,6 +257,7 @@ function MainApp() {
           onOpenMoreMenu={() => setIsMoreOpen(true)}
         />
 
+        {/* Mobile More Drawer */}
         <MobileMoreDrawer
           isOpen={isMoreOpen}
           onClose={() => setIsMoreOpen(false)}
@@ -248,6 +269,7 @@ function MainApp() {
         />
       </div>
 
+      {/* Global Transaction Modal */}
       <TransactionModal
         isOpen={isTxModalOpen}
         onClose={() => {
@@ -258,6 +280,7 @@ function MainApp() {
         editingTransaction={editingTx}
       />
 
+      {/* Onboarding Tutorial Modal */}
       <OnboardingModal isOpen={showTutorial} onClose={handleCloseTutorial} />
     </div>
   );
