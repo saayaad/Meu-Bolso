@@ -1,16 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Wallet,
-  PlusCircle,
-  CalendarDays,
-  Target,
-  BarChart3,
-  ChevronRight,
-  ChevronLeft,
-  X,
-  Sparkles,
-} from 'lucide-react';
-import { APP_NAME } from '../../lib/constants';
+import { Sparkles, ArrowRight, Check } from 'lucide-react';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -18,136 +7,89 @@ interface OnboardingModalProps {
 }
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) => {
-  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [step, setStep] = useState(1);
 
   if (!isOpen) return null;
 
   const steps = [
     {
-      title: `Bem-vindo ao ${APP_NAME}!`,
+      title: 'Bem-vindo ao Meu Bolso!',
       subtitle: 'Sua gestão financeira pessoal e familiar completa, inteligente e segura.',
-      icon: Sparkles,
-      iconColor: '#D97757',
-      description:
-        'Controle suas entradas e saídas de dinheiro, contas a pagar, cartões de crédito e metas em um só lugar, com isolamento total dos seus dados.',
+      desc: 'Controle suas entradas e saídas de dinheiro, contas a pagar, cartões de crédito e metas em um só lugar, com isolamento total dos seus dados.',
     },
     {
-      title: 'Lançamentos Rápidos e Flexíveis',
-      subtitle: 'Registre receitas, despesas e transferências em segundos.',
-      icon: PlusCircle,
-      iconColor: '#4ADE80',
-      description:
-        'Acesse os botões verdes (+) e vermelhos (-) no topo ou no botão flutuante. Crie parcelamentos automáticos, recorrências mensais e anexe comprovantes.',
+      title: 'Workspaces Independentes',
+      subtitle: 'Separe sua vida pessoal dos seus negócios e projetos.',
+      desc: 'Crie múltiplos workspaces e convide familiares ou sócios com permissões seguras em tempo real.',
     },
     {
-      title: 'Contas a Pagar e Calendário',
-      subtitle: 'Nunca mais esqueça uma conta ou pague juros por atraso.',
-      icon: CalendarDays,
-      iconColor: '#FBBF24',
-      description:
-        'Visualize contas vencidas e a vencer organizadas por seções e no calendário mensal com pontos interativos. Marque como pago com apenas um toque.',
+      title: 'Planejamento e Orçamentos',
+      subtitle: 'Metas claras para alcançar seus objetivos.',
+      desc: 'Defina limites de gastos por categoria e acompanhe suas metas financeiras com gráficos intuitivos.',
     },
     {
-      title: 'Orçamentos e Metas de Economia',
-      subtitle: 'Três modos de orçamento e acompanhamento de sonhos.',
-      icon: Target,
-      iconColor: '#A855F7',
-      description:
-        'Planeje seus gastos por Categoria, pela Regra 50/30/20 ou Orçamento Base Zero. Defina metas financeiras e registre aportes periódicos.',
+      title: 'Contas a Pagar e Receber',
+      subtitle: 'Nunca mais esqueça uma fatura ou boleto.',
+      desc: 'Receba alertas automáticos de vencimento e controle pagamentos pendentes com facilidade.',
     },
     {
-      title: 'Relatórios, Insights e Exportação',
-      subtitle: 'Gráficos completos, diagnósticos inteligentes e backups.',
-      icon: BarChart3,
-      iconColor: '#38BDF8',
-      description:
-        'Acompanhe o Total Gasto e a evolução patrimonial. Receba alertas automáticos de economia e exporte relatórios profissionais em PDF, Excel, CSV ou JSON.',
+      title: 'Tudo Pronto!',
+      subtitle: 'Seus dados protegidos e disponíveis em qualquer dispositivo.',
+      desc: 'Aproveite o app no celular ou computador. Vamos começar?',
     },
   ];
 
-  const current = steps[currentStep];
-  const Icon = current.icon;
-  const isLast = currentStep === steps.length - 1;
+  const current = steps[step - 1];
 
   const handleNext = () => {
-    if (isLast) {
-      onClose();
+    if (step < steps.length) {
+      setStep(step + 1);
     } else {
-      setCurrentStep(prev => prev + 1);
+      onClose();
     }
   };
 
-  const handlePrev = () => {
-    setCurrentStep(prev => Math.max(0, prev - 1));
-  };
-
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="bg-[#1C1C1C] border border-[#2B2B2B] rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-6 shadow-2xl relative animate-in fade-in zoom-in-95">
-        {/* Skip button */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="bg-[#141414] border border-[#2B2B2B] rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-6 text-center shadow-2xl relative">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-xs text-[#A3A3A3] hover:text-[#F5F5F5] font-semibold"
+          className="absolute top-5 right-5 text-xs text-[#A3A3A3] hover:text-[#F5F5F5] font-medium transition-colors"
         >
           Pular
         </button>
 
-        {/* Step Icon */}
-        <div className="flex justify-center pt-2">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
-            style={{ backgroundColor: `${current.iconColor}20`, color: current.iconColor }}
-          >
-            <Icon className="w-8 h-8" />
-          </div>
+        <div className="w-16 h-16 rounded-2xl bg-[#D97757]/15 border border-[#D97757]/30 text-[#D97757] flex items-center justify-center mx-auto shadow-inner">
+          <Sparkles className="w-8 h-8" />
         </div>
 
-        {/* Content */}
-        <div className="text-center space-y-2">
-          <span className="text-[10px] font-bold tracking-widest text-[#D97757] uppercase">
-            Passo {currentStep + 1} de {steps.length}
+        <div className="space-y-2">
+          <span className="text-[11px] font-bold text-[#D97757] uppercase tracking-widest">
+            PASSO {step} DE {steps.length}
           </span>
-          <h3 className="text-lg font-bold text-[#F5F5F5]">{current.title}</h3>
+          <h3 className="text-xl font-extrabold text-[#F5F5F5]">{current.title}</h3>
           <p className="text-xs font-semibold text-[#D97757]">{current.subtitle}</p>
-          <p className="text-xs text-[#A3A3A3] leading-relaxed pt-2">
-            {current.description}
-          </p>
+          <p className="text-xs text-[#A3A3A3] leading-relaxed pt-1">{current.desc}</p>
         </div>
 
-        {/* Dots progress indicator */}
         <div className="flex justify-center items-center gap-1.5 pt-2">
-          {steps.map((_, idx) => (
-            <span
-              key={idx}
-              className={`h-1.5 rounded-full transition-all ${
-                idx === currentStep ? 'w-6 bg-[#D97757]' : 'w-1.5 bg-[#2B2B2B]'
+          {steps.map((_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === step - 1 ? 'w-6 bg-[#D97757]' : 'w-1.5 bg-[#2B2B2B]'
               }`}
             />
           ))}
         </div>
 
-        {/* Navigation buttons */}
-        <div className="flex items-center justify-between pt-2">
-          {currentStep > 0 ? (
-            <button
-              onClick={handlePrev}
-              className="flex items-center gap-1 px-4 py-2 text-xs font-semibold text-[#A3A3A3] hover:text-[#F5F5F5]"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Anterior</span>
-            </button>
-          ) : (
-            <div />
-          )}
-
-          <button
-            onClick={handleNext}
-            className="flex items-center gap-1 px-5 py-2.5 bg-[#D97757] hover:bg-[#E58A6B] text-[#0A0A0A] font-bold text-xs rounded-xl shadow-md transition-all active:scale-95"
-          >
-            <span>{isLast ? 'Começar a Usar' : 'Próximo'}</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          onClick={handleNext}
+          className="w-full py-3 bg-[#D97757] hover:bg-[#E58A6B] text-[#0A0A0A] font-bold text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+        >
+          <span>{step === steps.length ? 'Começar a Usar' : 'Próximo'}</span>
+          {step === steps.length ? <Check className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+        </button>
       </div>
     </div>
   );
