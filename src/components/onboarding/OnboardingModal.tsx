@@ -9,7 +9,10 @@ interface OnboardingModalProps {
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) => {
   const [step, setStep] = useState(1);
 
-  if (!isOpen) return null;
+  // Se já foi dispensado neste navegador, nunca renderiza
+  if (!isOpen || typeof window !== 'undefined' && localStorage.getItem('meu_bolso_tutorial_visto') === 'true') {
+    return null;
+  }
 
   const steps = [
     {
@@ -41,11 +44,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
 
   const current = steps[step - 1];
 
+  const handleDismiss = () => {
+    localStorage.setItem('meu_bolso_tutorial_visto', 'true');
+    onClose();
+  };
+
   const handleNext = () => {
     if (step < steps.length) {
       setStep(step + 1);
     } else {
-      onClose();
+      handleDismiss();
     }
   };
 
@@ -53,7 +61,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <div className="bg-[#141414] border border-[#2B2B2B] rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-6 text-center shadow-2xl relative">
         <button
-          onClick={onClose}
+          onClick={handleDismiss}
           className="absolute top-5 right-5 text-xs text-[#A3A3A3] hover:text-[#F5F5F5] font-medium transition-colors"
         >
           Pular
