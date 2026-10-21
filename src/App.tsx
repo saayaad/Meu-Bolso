@@ -61,24 +61,38 @@ function MainApp() {
 
   // Exibe o tutorial APENAS se o onboarding nunca foi concluído por este usuário
   useEffect(() => {
-    if (!currentUser || loading) return;
-
-    const localKey = `meu_bolso_onboarding_done_${currentUser.uid}`;
-    const alreadyDoneLocally = localStorage.getItem(localKey) === 'true';
-
-    if (alreadyDoneLocally || userProfile?.onboardingDone === true) {
-      if (!alreadyDoneLocally) {
-        localStorage.setItem(localKey, 'true');
-      }
+    // 1. Trava global: se já foi visto neste navegador, nunca abre no login
+    if (typeof window !== 'undefined' && localStorage.getItem('meu_bolso_tutorial_visto') === 'true') {
       setShowTutorial(false);
       return;
     }
 
-    // Só exibe se expressamente false após terminar o carregamento completo do perfil
-    if (userProfile && userProfile.onboardingDone === false && !alreadyDoneLocally) {
+    if (!currentUser || loading || !userProfile) return;
+
+    const userKey = `meu_bolso_onboarding_done_${currentUser.uid}`;
+    const alreadyDoneLocally = localStorage.getItem(userKey) === 'true';
+
+    // 2. Se já estiver marcado como feito no Firestore ou no localStorage do usuário, silencia
+    if (alreadyDoneLocally || userProfile.onboardingDone === true) {
+      localStorage.setItem('meu_bolso_tutorial_visto', 'true');
+      localStorage.setItem(userKey, 'true');
+      setShowTutorial(false);
+      return;
+    }
+
+    // 3. Se for uma conta já existente (com workspace configurado), marca como concluído e não abre
+    if (userProfile.workspaceIds && userProfile.workspaceIds.length > 0 && userProfile.onboardingDone !== false) {
+      localStorage.setItem('meu_bolso_tutorial_visto', 'true');
+      localStorage.setItem(userKey, 'true');
+      setShowTutorial(false);
+      return;
+    }
+
+    // 4. Exibe apenas se for expressamente o primeiro acesso de cadastro
+    if (userProfile.onboardingDone === false && !alreadyDoneLocally) {
       setShowTutorial(true);
     }
-  }, [currentUser, userProfile?.onboardingDone, loading]);
+  }, [currentUser, userProfile, loading]);
 
   // Handle inactivity timeout and background app lock
   useEffect(() => {
@@ -151,11 +165,16 @@ function MainApp() {
 
   const handleCloseTutorial = async () => {
     setShowTutorial(false);
+    localStorage.setItem('meu_bolso_tutorial_visto', 'true');
     if (currentUser) {
       localStorage.setItem(`meu_bolso_onboarding_done_${currentUser.uid}`, 'true');
     }
-    if (userProfile && userProfile.onboardingDone !== true) {
-      await updateUserProfileData({ onboardingDone: true });
+    try {
+      if (userProfile && userProfile.onboardingDone !== true) {
+        await updateUserProfileData({ onboardingDone: true });
+      }
+    } catch (err) {
+      console.warn('Persistência salva localmente:', err);
     }
   };
 
