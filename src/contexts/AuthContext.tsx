@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   User,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -39,7 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Perfil instantâneo para carregar a interface sem esperar resposta de rede
   const buildFastProfile = (user: User): UserProfile => {
     const cachedWorkspaceId = localStorage.getItem(`meu_bolso_active_ws_${user.uid}`) || `ws_${user.uid.slice(0, 6)}`;
     return {
@@ -66,7 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   };
 
-  // Sincroniza o perfil garantindo que o onboarding concluído nunca seja resetado
   const syncUserProfile = async (user: User, isNewRegistration: boolean = false): Promise<UserProfile> => {
     const userRef = doc(db, 'users', user.uid);
     const localDone = localStorage.getItem(`meu_bolso_onboarding_done_${user.uid}`) === 'true';
@@ -127,7 +127,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserProfile(newProfile);
         localStorage.setItem('meu_bolso_cached_profile', JSON.stringify(newProfile));
 
-        // Cria workspace e perfil em segundo plano
         Promise.allSettled([
           setDoc(doc(db, 'workspaces', initialWorkspaceId), {
             id: initialWorkspaceId,
@@ -149,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return newProfile;
       }
     } catch (err) {
-      console.warn('Sincronização offline ou lenta com Firestore:', err);
+      console.warn('Sincronização em segundo plano:', err);
       const fallback = buildFastProfile(user);
       setUserProfile(fallback);
       return fallback;
@@ -157,11 +156,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    // Processa o retorno de autenticação caso tenha vindo via redirect mobile
+    getRedirectResult(auth)
+      .then(result => {
+        if (result?.user) {
+          syncUserProfile(result.user, false);
+        }
+      })
+      .catch(err => console.warn('Aviso redirect result:', err));
+
     const unsubscribe = onAuthStateChanged(auth, user => {
       setCurrentUser(user);
 
       if (user) {
-        // Carrega imediatamente do cache ou cria perfil rápido para abrir na hora
         let current = userProfile;
         if (!current || current.uid !== user.uid) {
           try {
@@ -174,10 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUserProfile(current);
         }
 
-        // Abre o app instantaneamente
         setLoading(false);
-
-        // Sincroniza em segundo plano sem travar a interface
         syncUserProfile(user, false);
       } else {
         setUserProfile(null);
@@ -189,13 +193,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signInWithGoogle = async () => {
-    const res = await signInWithPopup(auth, googleProvider);
-    if (res.user) {
-      const fast = buildFastProfile(res.user);
-      setUserProfile(fast);
-      localStorage.setItem('meu_bolso_cached_profile', JSON.stringify(fast));
-      setLoading(false);
-      syncUserProfile(res.user, false);
+    // Detecta se está em dispositivo móvel
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    try {
+      if (isMobile) {
+        // No celular tenta popup primeiro e faz fallback para redirect caso bloqueie sessionStorage
+        try {
+          const res = await signInWithPopup(auth, googleProvider);
+          if (res.user) {
+            const fast = buildFastProfile(res.user);
+            setUserProfile(fast);
+            localStorage.setItem('meu_bolso_cached_profile', JSON.stringify(fast));
+            setLoading(false);
+            syncUserProfile(res.user, false);
+          }
+        } catch (popupErr: any) {
+          if (popupErr.code === 'auth/popup-blocked' || popupErr.message?.includes('sessionStorage')) {
+            await signInWithRedirect(auth, googleProvider);
+          } else {
+            throw popupErr;
+          }
+        }
+      } else {
+        const res = await signInWithPopup(auth, googleProvider);
+        if (res.user) {
+          const fast = buildFastProfile(res.user);
+          setUserProfile(fast);
+          localStorage.setItem('meu_bolso_cached_profile', JSON.stringify(fast));
+          setLoading(false);
+          syncUserProfile(res.user, false);
+        }
+      }
+    } catch (error) {
+      console.error('Erro de autenticação Google:', error);
+      throw error;
     }
   };
 
@@ -226,9 +258,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await firebaseSignOut(auth);
     } catch (err) {
-      console.warn('Erro ao sair do Firebase:', err);
+      console.warn('Erro ao sair:', err);
     } finally {
-      // Limpeza imediata de estado para retorno instantâneo à tela de login
       setCurrentUser(null);
       setUserProfile(null);
       localStorage.removeItem('meu_bolso_cached_profile');
