@@ -59,12 +59,26 @@ function MainApp() {
     }
   }, [userProfile?.theme]);
 
-  // Exibe o tutorial APENAS UMA VEZ se o onboarding ainda não foi concluído
+  // Exibe o tutorial APENAS se o onboarding nunca foi concluído por este usuário
   useEffect(() => {
-    if (userProfile && userProfile.onboardingDone === false) {
+    if (!currentUser || loading) return;
+
+    const localKey = `meu_bolso_onboarding_done_${currentUser.uid}`;
+    const alreadyDoneLocally = localStorage.getItem(localKey) === 'true';
+
+    if (alreadyDoneLocally || userProfile?.onboardingDone === true) {
+      if (!alreadyDoneLocally) {
+        localStorage.setItem(localKey, 'true');
+      }
+      setShowTutorial(false);
+      return;
+    }
+
+    // Só exibe se expressamente false após terminar o carregamento completo do perfil
+    if (userProfile && userProfile.onboardingDone === false && !alreadyDoneLocally) {
       setShowTutorial(true);
     }
-  }, [userProfile?.onboardingDone]);
+  }, [currentUser, userProfile?.onboardingDone, loading]);
 
   // Handle inactivity timeout and background app lock
   useEffect(() => {
@@ -137,6 +151,9 @@ function MainApp() {
 
   const handleCloseTutorial = async () => {
     setShowTutorial(false);
+    if (currentUser) {
+      localStorage.setItem(`meu_bolso_onboarding_done_${currentUser.uid}`, 'true');
+    }
     if (userProfile && userProfile.onboardingDone !== true) {
       await updateUserProfileData({ onboardingDone: true });
     }
